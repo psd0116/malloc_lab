@@ -91,18 +91,27 @@ static void remove_node(void *bp);
 static int get_list_index(size_t size);
 
 /* ★ (신규) 크기에 맞는 가용 리스트 인덱스를 반환 */
-static int get_list_index(size_t size) {
-    // 예시: 간단한 크기 등급 분류 (실제로는 더 세밀하게 조정)
-    if (size <= 24) return 0;       // ~24
-    else if (size <= 32) return 1;  // ~32
-    else if (size <= 40) return 2;  // ~40
-    // ... (더 많은 작은 크기 등급) ...
-    else if (size <= 512) return 8; // ~512
-    else if (size <= 1024) return 9; // ~1024
-    else if (size <= 2048) return 10; // ~2048
-    else if (size <= 4096) return 11; // ~4096
-    // ... (더 많은 큰 크기 등급, 2의 거듭제곱 간격) ...
-    else return NUM_CLASSES - 1; // 가장 큰 등급 (4096 초과)
+static int get_list_index(size_t asize) {
+    if (asize <= 16) return 0;       // (1 ~ 16]
+    else if (asize <= 24) return 1;  // (16 ~ 24]
+    else if (asize <= 32) return 2;  // (24 ~ 32]
+    else if (asize <= 40) return 3;  // (32 ~ 40]
+    else if (asize <= 48) return 4;  // (40 ~ 48]
+    else if (asize <= 56) return 5;  // (48 ~ 56]
+    else if (asize <= 64) return 6;  // (56 ~ 64]
+    else if (asize <= 80) return 7;   // (64 ~ 80]
+    else if (asize <= 96) return 8;   // (80 ~ 96]
+    else if (asize <= 128) return 9;  // (96 ~ 128]
+    else if (asize <= 192) return 10; // (128 ~ 192]
+    else if (asize <= 256) return 11; // (192 ~ 256]
+    else if (asize <= 384) return 12; // (256 ~ 384]
+    else if (asize <= 512) return 13; // (384 ~ 512]
+    else if (asize <= 1024) return 14; // (512 ~ 1024]
+    else if (asize <= 2048) return 15; // (1024 ~ 2048]
+    else if (asize <= 4096) return 16; // (2048 ~ 4096]
+    else if (asize <= 8192) return 17; // (4096 ~ 8192]
+    else if (asize <= 16384) return 18;// (8192 ~ 16384]
+    else return 19;                   // (16384 초과 ~)
 }
 
 static void insert_node(void *bp)
@@ -144,20 +153,27 @@ static char* extend_heap(size_t words)
 {
     char *bp;
     size_t size;
+
     size = (words % 2) ? (words + 1) * WSIZE : words * WSIZE;
+    
+    char *last_blk = (char *)mem_heap_hi() - 7;
+
+    // 마지막 블록이 가용 블록인지 확인
+    if (!GET_ALLOC(last_blk)) size = size - GET_SIZE(last_blk);
+
+
     if ((long)(bp = mem_sbrk(size)) == -1){
         return NULL;
     }
-
+    // (새로 받은 공간에) 가용 블록  헤더/푸터를 초기화 한다.
     PUT(HDRP(bp), PACK(size, 0));
     PUT(FTRP(bp), PACK(size, 0));
+
+    // (힙의 맨 끝에) 새로운 에필로그 헤더를 초기화 한다.
     PUT(HDRP(NEXT_BLKP(bp)), PACK(0,1));
 
-    // return coalesce(bp); // (X) 이전 코드
-    
-    void *merged_bp = coalesce(bp); // ★ (수정) 
-    insert_node(merged_bp);     // ★ (수정) 새 블록을 리스트에 삽입
-    return merged_bp;
+    // 만약 이전 블록이 가용 상태였다면, 두 블록을 연결한다.
+    return coalesce(bp);
 }
 
 // First-fit

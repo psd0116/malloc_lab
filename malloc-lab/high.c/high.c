@@ -153,19 +153,44 @@ static char* extend_heap(size_t words)
 {
     char *bp;
     size_t size;
+    size_t extend_size;
+
     size = (words % 2) ? (words + 1) * WSIZE : words * WSIZE;
-    if ((long)(bp = mem_sbrk(size)) == -1){
+    
+    char *heap_end = mem_heap_hi();
+    char *last_blk = NEXT_BLKP(mem_heap_lo());
+    while (GET_SIZE(HDRP(last_blk)) > 0){
+        if (NEXT_BLKP(last_blk) > heap_end - 8) break;
+        last_blk = NEXT_BLKP(last_blk);
+    }
+
+    // 마지막 블록이 가용 블록인지 확인
+    if (!GET_ALLOC(HDRP(last_blk))) {
+        size_t free_size = GET_SIZE(HDRP(last_blk));
+
+        // 부족한 만큼만 확장
+        if (free_size >= size) {
+            // 이미 충분히 크면 확장할 필요 없음
+            return last_blk;
+        } else {
+            extend_size = size - free_size;
+        }
+    } else {
+        // 마지막 블록이 가용이 아니면 전체 크기 확장
+        extend_size = size;
+    }
+    
+    if ((long)(bp = mem_sbrk(extend_size)) == -1){
         return NULL;
     }
 
-    PUT(HDRP(bp), PACK(size, 0));
-    PUT(FTRP(bp), PACK(size, 0));
-    PUT(HDRP(NEXT_BLKP(bp)), PACK(0,1));
+    PUT(HDRP(bp), PACK(size, 0)); // 새 가용 블록 헤더
+    PUT(FTRP(bp), PACK(size, 0)); // 푸터
+    PUT(HDRP(NEXT_BLKP(bp)), PACK(0,1)); // 새 에필로그 헤더
 
-    // return coalesce(bp); // (X) 이전 코드
     
-    void *merged_bp = coalesce(bp); // ★ (수정) 
-    insert_node(merged_bp);     // ★ (수정) 새 블록을 리스트에 삽입
+    void *merged_bp = coalesce(bp); // 기존 마지막 블록과 병합
+    insert_node(merged_bp);     // 가용 리스트 삽입
     return merged_bp;
 }
 
@@ -301,14 +326,6 @@ void *mm_malloc(size_t size)
     if (size == 0)
         return NULL;
 
-    if (size == 448)
-    {
-        size =  512;
-    }
-    if (size == 112)
-    {
-        size = 128;
-    }
     size_t min_block_size = 3 * DSIZE;
 
     /* 2. 크기 조정 (오버헤드 및 정렬 요구사항 포함) */
